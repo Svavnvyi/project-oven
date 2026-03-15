@@ -1,6 +1,6 @@
 # Project Oven
 
-Top-down Kivy prototype where you move a fridge sprite around the screen.
+Top-down Pygame prototype where you move a fridge sprite around the screen.
 
 ## Setup
 

@@ -1,0 +1,37 @@
+"""Central configuration for the Pygame game."""
+
+from pathlib import Path
+
+FPS = 60
+
+BOTTOM_PANEL_HEIGHT = 160
+SCREEN_WIDTH = 1000
+SCREEN_HEIGHT = 500 + BOTTOM_PANEL_HEIGHT
+
+WINDOW_TITLE = "Konyhai Karneval"
+
+BACKGROUND_IMAGE_PATH = "background/pixil-frame-0.png"
+PANEL_IMAGE_PATH = "ui/panL.png"
+
+ALLY_SIDE = "Ally"
+OPPONENT_SIDE = "Opponent"
+
+IDLE_FRAMES = 3
+IDLE_SCALE_MULTIPLIER = 0.80
+
+IDLE_ANIMATION_FOLDER = "Idle"
+ATTACK_ANIMATION_FOLDER = "Attack"
+ATTACK2_ANIMATION_FOLDER = "Attack2"
+DEATH_ANIMATION_FOLDER = "Death"
+
+IDLE_ANIMATION_PREFIX = "Idle"
+ATTACK_ANIMATION_PREFIX = "XFallattack"
+
+
+RIGHT_FACING_SUFFIX = "R"
+LEFT_FACING_SUFFIX = "L"
+
+ANIMATION_COOLDOWN_MS = 150
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ASSETS_ROOT = PROJECT_ROOT / "assets"
