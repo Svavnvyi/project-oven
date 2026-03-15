@@ -21,7 +21,11 @@ class Game:
         self.running = True
         self.background_image = assets.load_image(config.BACKGROUND_IMAGE_PATH)
         self.panel_image = assets.load_image(config.PANEL_IMAGE_PATH)
-        self.fighters = [self._build_ally_fridge(), self._build_opponent_fridge()]
+        self.attack_button_image = assets.load_image(config.ATTACK_BUTTON_IMAGE_PATH)
+        self.attack_button_rect: pygame.Rect | None = None
+        self.ally_fighter = self._build_ally_fridge()
+        self.opponent_fighter = self._build_opponent_fridge()
+        self.fighters = [self.ally_fighter, self.opponent_fighter]
 
     def _build_ally_fridge(self) -> Fighter:
         stats = FighterStats(
@@ -39,11 +43,19 @@ class Game:
             direction_suffix=config.RIGHT_FACING_SUFFIX,
             scale_multiplier=config.IDLE_SCALE_MULTIPLIER,
         )
+        attack_frames = assets.load_animation_frames(
+            side=stats.side,
+            fighter_name=stats.name,
+            folder_name=config.ATTACK_ANIMATION_FOLDER,
+            prefix=config.ATTACK_ANIMATION_PREFIX,
+            frame_count=config.ATTACK_FRAMES,
+            direction_suffix=config.RIGHT_FACING_SUFFIX,
+        )
         return Fighter(
             x=self.ALLY_SPAWN_X,
             y=self.FIGHTER_SPAWN_Y,
             stats=stats,
-            animations=idle_frames,
+            animations={"idle": idle_frames, "attack": attack_frames},
             animation_cooldown_ms=config.ANIMATION_COOLDOWN_MS,
         )
 
@@ -67,7 +79,7 @@ class Game:
             x=self.OPPONENT_SPAWN_X,
             y=self.FIGHTER_SPAWN_Y,
             stats=stats,
-            animations=idle_frames,
+            animations={"idle": idle_frames},
             animation_cooldown_ms=config.ANIMATION_COOLDOWN_MS,
         )
 
@@ -75,6 +87,13 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and self.attack_button_rect is not None
+                and self.attack_button_rect.collidepoint(event.pos)
+            ):
+                self.ally_fighter.request_attack()
 
     def update(self) -> None:
         now_ms = pygame.time.get_ticks()
@@ -83,14 +102,18 @@ class Game:
 
     def render(self) -> None:
         self.screen.blit(self.background_image, (0, 0))
-        draw_bottom_panel(
+        panel_top_y = config.SCREEN_HEIGHT - config.BOTTOM_PANEL_HEIGHT
+        self.attack_button_rect = draw_bottom_panel(
             self.screen,
             self.panel_image,
+            self.attack_button_image,
             config.SCREEN_HEIGHT,
             config.BOTTOM_PANEL_HEIGHT,
+            config.ATTACK_BUTTON_LEFT,
+            config.ATTACK_BUTTON_TOP,
         )
         for fighter in self.fighters:
-            fighter.draw(self.screen)
+            fighter.draw(self.screen, clip_bottom_y=panel_top_y)
         pygame.display.flip()
 
     def run(self) -> None:

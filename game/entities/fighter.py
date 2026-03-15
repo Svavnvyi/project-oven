@@ -22,7 +22,7 @@ class Fighter:
         x: int,
         y: int,
         stats: FighterStats,
-        animations: list[pygame.Surface],
+        animations: dict[str, list[pygame.Surface]],
         animation_cooldown_ms: int = config.ANIMATION_COOLDOWN_MS,
     ) -> None:
         self.name = stats.name
@@ -32,23 +32,53 @@ class Fighter:
         self.side = stats.side
         self.alive = True
 
-        self.animation_frames = animations
+        self.animations = animations
+        self.state = "idle"
         self.frame_index = 0
         self.animation_cooldown_ms = animation_cooldown_ms
         self.update_time = pygame.time.get_ticks()
 
-        self.image = self.animation_frames[self.frame_index]
+        self.image = self.animations[self.state][self.frame_index]
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
 
+    def is_attacking(self) -> bool:
+        return self.state == "attack"
+
+    def request_attack(self) -> bool:
+        if self.is_attacking() or "attack" not in self.animations:
+            return False
+        self.state = "attack"
+        self.frame_index = 0
+        self.update_time = pygame.time.get_ticks()
+        return True
+
     def update(self, now_ms: int) -> None:
-        self.image = self.animation_frames[self.frame_index]
+        frames = self.animations[self.state]
         if now_ms - self.update_time > self.animation_cooldown_ms:
             self.update_time = now_ms
             self.frame_index += 1
 
-        if self.frame_index >= len(self.animation_frames):
+        if self.frame_index >= len(frames):
+            if self.is_attacking():
+                self.state = "idle"
             self.frame_index = 0
 
-    def draw(self, surface: pygame.Surface) -> None:
-        surface.blit(self.image, self.rect)
+        self.image = self.animations[self.state][self.frame_index]
+
+    def draw(self, surface: pygame.Surface, clip_bottom_y: int | None = None) -> None:
+        if not self.is_attacking() or clip_bottom_y is None:
+            surface.blit(self.image, self.rect)
+            return
+
+        visible_height = clip_bottom_y - self.rect.top
+        if visible_height <= 0:
+            return
+
+        if visible_height >= self.rect.height:
+            surface.blit(self.image, self.rect)
+            return
+
+        source_rect = pygame.Rect(0, 0, self.rect.width, visible_height)
+        target_rect = pygame.Rect(self.rect.left, self.rect.top, self.rect.width, visible_height)
+        surface.blit(self.image, target_rect, source_rect)
