@@ -4,6 +4,7 @@ import pygame
 
 from game import assets, config
 from game.entities.fighter import Fighter, FighterStats
+from game.ui.healthbar import draw_healthbar
 from game.ui.panel import draw_bottom_panel
 
 
@@ -114,6 +115,18 @@ class Game:
         )
         for fighter in self.fighters:
             fighter.draw(self.screen, clip_bottom_y=panel_top_y)
+            draw_healthbar(
+                self.screen,
+                fighter_rect=fighter.rect,
+                hp=fighter.hp,
+                max_hp=fighter.max_hp,
+                width=config.HEALTHBAR_WIDTH,
+                height=config.HEALTHBAR_HEIGHT,
+                offset_y=config.HEALTHBAR_OFFSET_Y,
+                border_color=config.HEALTHBAR_BORDER_COLOR,
+                empty_color=config.HEALTHBAR_EMPTY_COLOR,
+                fill_color=config.HEALTHBAR_FILL_COLOR,
+            )
         pygame.display.flip()
 
     def run(self) -> None:
