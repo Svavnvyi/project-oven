@@ -67,10 +67,7 @@ class Fighter:
         if not self.alive:
             return False
         self.block_pending = True
-        # Blocking cancels any in-progress attack animation for this turn.
-        self.state = "idle"
-        self.frame_index = 0
-        self.update_time = pygame.time.get_ticks()
+        # Freeze whichever frame is currently visible while block is active.
         return True
 
     @staticmethod
@@ -96,6 +93,10 @@ class Fighter:
             self.update_time = pygame.time.get_ticks()
 
     def update(self, now_ms: int) -> None:
+        if self.alive and self.block_pending:
+            self.image = self.animations[self.state][self.frame_index]
+            return
+
         frames = self.animations[self.state]
         if now_ms - self.update_time > self.animation_cooldown_ms:
             self.update_time = now_ms
