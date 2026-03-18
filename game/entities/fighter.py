@@ -1,5 +1,6 @@
 """Fighter entity and animation state."""
 
+import random
 from dataclasses import dataclass
 
 import pygame
@@ -31,6 +32,7 @@ class Fighter:
         self.strength = stats.strength
         self.side = stats.side
         self.alive = True
+        self.block_pending = False
 
         self.animations = animations
         self.state = "idle"
@@ -45,13 +47,53 @@ class Fighter:
     def is_attacking(self) -> bool:
         return self.state == "attack"
 
+    def is_dying(self) -> bool:
+        return self.state == "death"
+
     def request_attack(self) -> bool:
-        if self.is_attacking() or "attack" not in self.animations:
+        if (
+            not self.alive
+            or self.block_pending
+            or self.is_attacking()
+            or "attack" not in self.animations
+        ):
             return False
         self.state = "attack"
         self.frame_index = 0
         self.update_time = pygame.time.get_ticks()
         return True
+
+    def activate_block(self) -> bool:
+        if not self.alive:
+            return False
+        self.block_pending = True
+        # Blocking cancels any in-progress attack animation for this turn.
+        self.state = "idle"
+        self.frame_index = 0
+        self.update_time = pygame.time.get_ticks()
+        return True
+
+    @staticmethod
+    def roll_attack_damage() -> int:
+        return sum(
+            random.randint(1, config.FRIDGE_DAMAGE_DICE_SIDES)
+            for _ in range(config.FRIDGE_DAMAGE_DICE_COUNT)
+        ) + config.FRIDGE_DAMAGE_FLAT_BONUS
+
+    def take_damage(self, amount: int) -> None:
+        if not self.alive:
+            return
+        incoming_damage = max(0, amount)
+        if self.block_pending:
+            incoming_damage = int((incoming_damage * 0.05) + 0.5)
+            self.block_pending = False
+        self.hp = max(0, self.hp - incoming_damage)
+        if self.hp == 0:
+            self.alive = False
+            self.block_pending = False
+            self.state = "death" if "death" in self.animations else "idle"
+            self.frame_index = 0
+            self.update_time = pygame.time.get_ticks()
 
     def update(self, now_ms: int) -> None:
         frames = self.animations[self.state]
@@ -60,9 +102,13 @@ class Fighter:
             self.frame_index += 1
 
         if self.frame_index >= len(frames):
-            if self.is_attacking():
+            if self.is_dying():
+                self.frame_index = len(frames) - 1
+            elif self.is_attacking():
                 self.state = "idle"
-            self.frame_index = 0
+                self.frame_index = 0
+            else:
+                self.frame_index = 0
 
         self.image = self.animations[self.state][self.frame_index]
 

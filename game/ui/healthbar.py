@@ -11,6 +11,7 @@ def draw_healthbar(
     max_hp: int,
     width: int,
     height: int,
+    offset_x: int,
     offset_y: int,
     border_color: tuple[int, int, int],
     empty_color: tuple[int, int, int],
@@ -21,7 +22,7 @@ def draw_healthbar(
     else:
         ratio = max(0.0, min(1.0, hp / max_hp))
 
-    bar_x = fighter_rect.centerx - (width // 2)
+    bar_x = fighter_rect.centerx - (width // 2) + offset_x
     bar_y = fighter_rect.bottom + offset_y
     bar_rect = pygame.Rect(bar_x, bar_y, width, height)
 
