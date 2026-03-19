@@ -226,6 +226,7 @@ class Game:
                 empty_color=config.HEALTHBAR_EMPTY_COLOR,
                 fill_color=config.HEALTHBAR_FILL_COLOR,
             )
+        self._draw_turn_indicator()
         pygame.display.flip()
 
     def _update_hover_cursor(self) -> None:
@@ -246,6 +247,46 @@ class Game:
         except pygame.error:
             # Keep gameplay running if system cursor switching is unsupported.
             return
+
+    def _draw_turn_indicator(self) -> None:
+        left = config.TURN_INDICATOR_LEFT
+        top = config.TURN_INDICATOR_TOP
+        size = config.TURN_INDICATOR_SIZE
+        line_width = config.TURN_INDICATOR_LINE_WIDTH
+
+        if self.current_turn == config.ALLY_SIDE:
+            color = config.TURN_INDICATOR_TICK_COLOR
+            pygame.draw.line(
+                self.screen,
+                color,
+                (left, top + int(size * 0.6)),
+                (left + int(size * 0.35), top + size),
+                line_width,
+            )
+            pygame.draw.line(
+                self.screen,
+                color,
+                (left + int(size * 0.35), top + size),
+                (left + size, top),
+                line_width,
+            )
+            return
+
+        color = config.TURN_INDICATOR_X_COLOR
+        pygame.draw.line(
+            self.screen,
+            color,
+            (left, top),
+            (left + size, top + size),
+            line_width,
+        )
+        pygame.draw.line(
+            self.screen,
+            color,
+            (left + size, top),
+            (left, top + size),
+            line_width,
+        )
 
     def _handoff_to_opponent_turn(self) -> None:
         self.current_turn = config.OPPONENT_SIDE
