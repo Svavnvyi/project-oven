@@ -6,7 +6,7 @@ import pygame
 
 from game import assets, config
 from game.entities.fighter import Fighter, FighterStats
-from game.ui.healthbar import draw_healthbar
+from game.ui.healthbar import draw_healthbar, draw_cooldownbar
 from game.ui.panel import draw_bottom_panel, AttackButton
 
 
@@ -41,6 +41,7 @@ class Game:
         self.cursor_is_hand = False
         self.current_turn = config.ALLY_SIDE
         self.opponent_attack_due_ms = 0
+        self.ally_attack2_cooldown_turns_remaining = 0
         self.ally_fighter = self._build_ally_fridge()
         self.opponent_fighter = self._build_opponent_fridge()
         self.fighters = [self.ally_fighter, self.opponent_fighter]
@@ -139,6 +140,20 @@ class Game:
                         if index == 2:
                             if self.ally_fighter.activate_block():
                                 self._handoff_to_opponent_turn()
+                        elif index == 1:
+                            if (
+                                self.ally_attack2_cooldown_turns_remaining == 0
+                                and self.ally_fighter.alive
+                                and self.opponent_fighter.alive
+                                and self.ally_fighter.request_attack()
+                            ):
+                                damage = self._roll_attack2_damage()
+                                self.opponent_fighter.take_damage(damage)
+                                self.ally_attack2_cooldown_turns_remaining = (
+                                    config.ATTACK2_COOLDOWN_ALLY_TURNS
+                                )
+                                if self._is_combat_active():
+                                    self._handoff_to_opponent_turn()
                         elif (
                             self.ally_fighter.alive
                             and self.opponent_fighter.alive
@@ -166,7 +181,7 @@ class Game:
                 damage = self.opponent_fighter.roll_attack_damage()
                 self.ally_fighter.take_damage(damage)
             if self._is_combat_active():
-                self.current_turn = config.ALLY_SIDE
+                self._handoff_to_ally_turn()
         for fighter in self.fighters:
             fighter.update(now_ms)
 
@@ -226,6 +241,23 @@ class Game:
                 empty_color=config.HEALTHBAR_EMPTY_COLOR,
                 fill_color=config.HEALTHBAR_FILL_COLOR,
             )
+            if fighter.side == config.ALLY_SIDE:
+                draw_cooldownbar(
+                    self.screen,
+                    fighter_rect=fighter.rect,
+                    ratio=self._get_attack2_cooldown_ratio(),
+                    width=config.HEALTHBAR_WIDTH,
+                    height=config.COOLDOWNBAR_HEIGHT,
+                    offset_x=offset_x,
+                    offset_y=(
+                        config.HEALTHBAR_OFFSET_Y
+                        + config.HEALTHBAR_HEIGHT
+                        + config.COOLDOWNBAR_OFFSET_Y
+                    ),
+                    border_color=config.COOLDOWNBAR_BORDER_COLOR,
+                    empty_color=config.COOLDOWNBAR_EMPTY_COLOR,
+                    fill_color=config.COOLDOWNBAR_FILL_COLOR,
+                )
         self._draw_turn_indicator()
         pygame.display.flip()
 
@@ -291,6 +323,30 @@ class Game:
     def _handoff_to_opponent_turn(self) -> None:
         self.current_turn = config.OPPONENT_SIDE
         self.opponent_attack_due_ms = pygame.time.get_ticks() + config.OPPONENT_ATTACK_INTERVAL_MS
+
+    def _handoff_to_ally_turn(self) -> None:
+        self.current_turn = config.ALLY_SIDE
+        if self.ally_attack2_cooldown_turns_remaining > 0:
+            self.ally_attack2_cooldown_turns_remaining -= 1
+
+    def _roll_attack2_damage(self) -> int:
+        return sum(
+            random.randint(1, config.ATTACK2_DAMAGE_DICE_SIDES)
+            for _ in range(config.ATTACK2_DAMAGE_DICE_COUNT)
+        ) + config.ATTACK2_DAMAGE_FLAT_BONUS
+
+    def _get_attack2_cooldown_ratio(self) -> float:
+        if config.ATTACK2_COOLDOWN_ALLY_TURNS <= 0:
+            return 1.0
+        remaining = max(0, self.ally_attack2_cooldown_turns_remaining)
+        return max(
+            0.0,
+            min(
+                1.0,
+                (config.ATTACK2_COOLDOWN_ALLY_TURNS - remaining)
+                / config.ATTACK2_COOLDOWN_ALLY_TURNS,
+            ),
+        )
 
     def _is_combat_active(self) -> bool:
         return self.ally_fighter.alive and self.opponent_fighter.alive
