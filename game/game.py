@@ -41,7 +41,7 @@ class Game:
             )
         self.main_menu_new_game_rect = pygame.Rect(*config.MAIN_MENU_NEW_GAME_BUTTON)
         self.main_menu_character_rect = pygame.Rect(*config.MAIN_MENU_CHARACTER_BUTTON)
-        self.main_menu_upgrade_rect = pygame.Rect(*config.MAIN_MENU_UPGRADE_BUTTON)
+        #self.main_menu_upgrade_rect = pygame.Rect(*config.MAIN_MENU_UPGRADE_BUTTON)
 
         self.player_wins = 0
         self.upgrade_purchase_counts: dict[str, int] = {
@@ -548,6 +548,16 @@ class Game:
         self.screen.fill((0, 0, 0))
         for _name, surf, rect in self._character_portrait_items:
             self.screen.blit(surf, rect)
+        mouse_pos = pygame.mouse.get_pos()
+        for _name, _surf, rect in self._character_portrait_items:
+            if rect.collidepoint(mouse_pos):
+                pygame.draw.rect(
+                    self.screen,
+                    config.CHARACTER_PORTRAIT_HOVER_BORDER_COLOR,
+                    rect,
+                    config.CHARACTER_PORTRAIT_HOVER_BORDER_WIDTH,
+                )
+                break
         pygame.draw.rect(
             self.screen,
             config.CHARACTER_BACK_BUTTON_BG_COLOR,
@@ -693,7 +703,7 @@ class Game:
             should_use_hand = (
                 self.main_menu_new_game_rect.collidepoint(mouse_position)
                 or self.main_menu_character_rect.collidepoint(mouse_position)
-                or self.main_menu_upgrade_rect.collidepoint(mouse_position)
+                #or self.main_menu_upgrade_rect.collidepoint(mouse_position)
             )
         elif self.app_state == "character_screen":
             should_use_hand = self.character_back_button_rect.collidepoint(
@@ -702,17 +712,21 @@ class Game:
                 rect.collidepoint(mouse_position)
                 for _n, _s, rect in self._character_portrait_items
             )
-        elif self.app_state == "upgrade_screen":
-            should_use_hand = self.character_back_button_rect.collidepoint(
-                mouse_position
-            ) or any(
-                r.collidepoint(mouse_position) for r in self.upgrade_option_rects.values()
-            )
+        #elif self.app_state == "upgrade_screen":
+        #    should_use_hand = self.character_back_button_rect.collidepoint(
+        #        mouse_position
+        #    ) or any(
+        #        r.collidepoint(mouse_position) for r in self.upgrade_option_rects.values()
+        #    )
         elif self.app_state == "playing":
             should_use_hand = any(
                 button_rect.collidepoint(mouse_position)
                 for button_rect in self.attack_button_rects
             )
+            if self.game_over and self.restart_button_rect is not None:
+                should_use_hand = should_use_hand or self.restart_button_rect.collidepoint(
+                    mouse_position
+                )
         if should_use_hand == self.cursor_is_hand:
             return
         try:
