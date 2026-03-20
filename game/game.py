@@ -1,13 +1,18 @@
 """Main game orchestration: input, update, render."""
 
+from __future__ import annotations
+
 import random
+from typing import Literal
 
 import pygame
 
 from game import assets, config
-from game.entities.fighter import Fighter, FighterStats
-from game.ui.healthbar import draw_healthbar, draw_cooldownbar
-from game.ui.panel import draw_bottom_panel, AttackButton
+from game.entities.fighter import AttackDamageSpec, Fighter, FighterStats
+from game.ui.healthbar import draw_cooldownbar, draw_healthbar
+from game.ui.panel import AttackButton, draw_bottom_panel
+
+AppState = Literal["main_menu", "character_screen", "upgrade_screen", "playing"]
 
 
 class Game:
@@ -22,6 +27,54 @@ class Game:
         pygame.display.set_caption(config.WINDOW_TITLE)
 
         self.running = True
+        self.app_state: AppState = "main_menu"
+        self.selected_ally: str | None = "Fridge"
+
+        self.main_menu_image = assets.load_image(config.MAIN_MENU_IMAGE_PATH)
+        if self.main_menu_image.get_size() != (
+            config.SCREEN_WIDTH,
+            config.SCREEN_HEIGHT,
+        ):
+            self.main_menu_image = pygame.transform.smoothscale(
+                self.main_menu_image,
+                (config.SCREEN_WIDTH, config.SCREEN_HEIGHT),
+            )
+        self.main_menu_new_game_rect = pygame.Rect(*config.MAIN_MENU_NEW_GAME_BUTTON)
+        self.main_menu_character_rect = pygame.Rect(*config.MAIN_MENU_CHARACTER_BUTTON)
+        self.main_menu_upgrade_rect = pygame.Rect(*config.MAIN_MENU_UPGRADE_BUTTON)
+
+        self.player_wins = 0
+        self.upgrade_purchase_counts: dict[str, int] = {
+            "attack": 0,
+            "hp": 0,
+            "cooldown": 0,
+        }
+        self.meta_attack_flat = 0
+        self.meta_hp_bonus = 0
+        self.meta_cooldown_reduction = 0
+        self.opponent_hp_mult = 1.0
+        self.opponent_attack_mult = 1.0
+        self.opponent_interval_mult = 1.0
+
+        self.upgrade_option_rects: dict[str, pygame.Rect] = {}
+        total_w = (
+            3 * config.UPGRADE_OPTION_BUTTON_WIDTH + 2 * config.UPGRADE_OPTION_GAP
+        )
+        start_x = (config.SCREEN_WIDTH - total_w) // 2
+        for i, key in enumerate(("attack", "hp", "cooldown")):
+            x = start_x + i * (
+                config.UPGRADE_OPTION_BUTTON_WIDTH + config.UPGRADE_OPTION_GAP
+            )
+            self.upgrade_option_rects[key] = pygame.Rect(
+                x,
+                config.UPGRADE_OPTION_ROW_Y,
+                config.UPGRADE_OPTION_BUTTON_WIDTH,
+                config.UPGRADE_OPTION_BUTTON_HEIGHT,
+            )
+
+        self.upgrade_title_font = pygame.font.Font(None, 40)
+        self.upgrade_small_font = pygame.font.Font(None, 22)
+
         self.background_image = assets.load_image(config.BACKGROUND_IMAGE_PATH)
         self.panel_image = assets.load_image(config.PANEL_IMAGE_PATH)
         self.attack_button_image = assets.load_image(config.ATTACK_BUTTON_IMAGE_PATH)
@@ -42,16 +95,73 @@ class Game:
         self.current_turn = config.ALLY_SIDE
         self.opponent_attack_due_ms = 0
         self.ally_attack2_cooldown_turns_remaining = 0
-        self.ally_fighter = self._build_ally_fridge()
-        self.opponent_fighter = self._build_opponent_fridge()
-        self.fighters = [self.ally_fighter, self.opponent_fighter]
+        self.game_over = False
+        self.winner_side: str | None = None
+        self.restart_button_rect: pygame.Rect | None = None
+        self.restart_font = pygame.font.Font(None, 44)
+        self.character_back_font = pygame.font.Font(None, 36)
+
+        self.ally_fighter: Fighter | None = None
+        self.opponent_fighter: Fighter | None = None
+        self.fighters: list[Fighter] = []
+
+        self._character_portrait_items: list[tuple[str, pygame.Surface, pygame.Rect]] = []
+        self.character_back_button_rect = pygame.Rect(0, 0, 0, 0)
+        self._load_character_portraits()
+
+    def _load_character_portraits(self) -> None:
+        self._character_portrait_items = []
+        scaled: list[tuple[str, pygame.Surface]] = []
+        for name, rel_path in config.CHARACTER_PORTRAIT_PATHS:
+            image = assets.load_image(rel_path)
+            h = image.get_height()
+            w = image.get_width()
+            if h > config.CHARACTER_PORTRAIT_MAX_HEIGHT:
+                scale = config.CHARACTER_PORTRAIT_MAX_HEIGHT / h
+                new_w = max(1, int(w * scale))
+                new_h = max(1, int(h * scale))
+                image = pygame.transform.smoothscale(image, (new_w, new_h))
+            scaled.append((name, image))
+
+        total_width = sum(s.get_width() for _, s in scaled) + config.CHARACTER_PORTRAIT_GAP * (
+            len(scaled) - 1
+        )
+        x = (config.SCREEN_WIDTH - total_width) // 2
+        y = config.CHARACTER_PORTRAIT_TOP_MARGIN
+        for name, surf in scaled:
+            rect = surf.get_rect(topleft=(x, y))
+            self._character_portrait_items.append((name, surf, rect))
+            x += surf.get_width() + config.CHARACTER_PORTRAIT_GAP
+
+        bw = config.CHARACTER_BACK_BUTTON_WIDTH
+        bh = config.CHARACTER_BACK_BUTTON_HEIGHT
+        bx = (config.SCREEN_WIDTH - bw) // 2
+        by = config.SCREEN_HEIGHT - config.CHARACTER_BACK_BUTTON_BOTTOM_MARGIN - bh
+        self.character_back_button_rect = pygame.Rect(bx, by, bw, bh)
+
+    def _ally_attack2_cooldown_max_turns(self) -> int:
+        return max(
+            1,
+            config.ATTACK2_COOLDOWN_ALLY_TURNS - self.meta_cooldown_reduction,
+        )
 
     def _build_ally_fridge(self) -> Fighter:
         stats = FighterStats(
             name="Fridge",
-            max_hp=150,
-            strength=20,
+            max_hp=config.FRIDGE_ALLY_MAX_HP + self.meta_hp_bonus,
+            strength=config.FRIDGE_ALLY_STRENGTH,
             side=config.ALLY_SIDE,
+            initiative=config.FRIDGE_ALLY_INITIATIVE,
+            attack1=AttackDamageSpec(
+                config.FRIDGE_ATTACK1_DICE_COUNT,
+                config.FRIDGE_ATTACK1_DICE_SIDES,
+                config.FRIDGE_ATTACK1_FLAT_BONUS + self.meta_attack_flat,
+            ),
+            attack2=AttackDamageSpec(
+                config.FRIDGE_ATTACK2_DICE_COUNT,
+                config.FRIDGE_ATTACK2_DICE_SIDES,
+                config.FRIDGE_ATTACK2_FLAT_BONUS + self.meta_attack_flat,
+            ),
         )
         idle_frames = assets.load_animation_frames(
             side=stats.side,
@@ -86,12 +196,99 @@ class Game:
             animation_cooldown_ms=config.ANIMATION_COOLDOWN_MS,
         )
 
+    def _build_ally_oven(self) -> Fighter:
+        stats = FighterStats(
+            name="Oven",
+            max_hp=config.OVEN_ALLY_MAX_HP + self.meta_hp_bonus,
+            strength=config.OVEN_ALLY_STRENGTH,
+            side=config.ALLY_SIDE,
+            initiative=config.OVEN_ALLY_INITIATIVE,
+            attack1=AttackDamageSpec(
+                config.OVEN_ATTACK1_DICE_COUNT,
+                config.OVEN_ATTACK1_DICE_SIDES,
+                config.OVEN_ATTACK1_FLAT_BONUS + self.meta_attack_flat,
+            ),
+            attack2=AttackDamageSpec(
+                config.OVEN_ATTACK2_DICE_COUNT,
+                config.OVEN_ATTACK2_DICE_SIDES,
+                config.OVEN_ATTACK2_FLAT_BONUS + self.meta_attack_flat,
+            ),
+        )
+        idle_frames = assets.load_ally_oven_idle_frames(
+            scale_multiplier=config.IDLE_SCALE_MULTIPLIER,
+        )
+        attack_frames = assets.duplicate_frames_for_fallback(idle_frames)
+        death_frames = assets.duplicate_frames_for_fallback(idle_frames)
+        return Fighter(
+            x=self.ALLY_SPAWN_X,
+            y=self.FIGHTER_SPAWN_Y,
+            stats=stats,
+            animations={"idle": idle_frames, "attack": attack_frames, "death": death_frames},
+            animation_cooldown_ms=config.ANIMATION_COOLDOWN_MS,
+        )
+
+    def _build_ally_toaster(self) -> Fighter:
+        stats = FighterStats(
+            name="Toaster",
+            max_hp=config.TOASTER_ALLY_MAX_HP,
+            strength=config.TOASTER_ALLY_STRENGTH,
+            side=config.ALLY_SIDE,
+            initiative=config.TOASTER_ALLY_INITIATIVE,
+            attack1=AttackDamageSpec(
+                config.TOASTER_ATTACK1_DICE_COUNT,
+                config.TOASTER_ATTACK1_DICE_SIDES,
+                config.TOASTER_ATTACK1_FLAT_BONUS,
+            ),
+            attack2=AttackDamageSpec(
+                config.TOASTER_ATTACK2_DICE_COUNT,
+                config.TOASTER_ATTACK2_DICE_SIDES,
+                config.TOASTER_ATTACK2_FLAT_BONUS,
+            ),
+        )
+        idle_frames = assets.load_ally_toaster_idle_frames(
+            scale_multiplier=config.IDLE_SCALE_MULTIPLIER,
+        )
+        attack_frames = assets.load_ally_toaster_attack_frames(
+            scale_multiplier=config.IDLE_SCALE_MULTIPLIER,
+        )
+        death_frames = assets.load_ally_toaster_death_placeholder(idle_frames)
+        return Fighter(
+            x=self.ALLY_SPAWN_X,
+            y=self.FIGHTER_SPAWN_Y,
+            stats=stats,
+            animations={"idle": idle_frames, "attack": attack_frames, "death": death_frames},
+            animation_cooldown_ms=config.ANIMATION_COOLDOWN_MS,
+        )
+
+    def _build_ally_from_selection(self) -> Fighter:
+        key = (self.selected_ally or "Fridge").strip()
+        if key == "Oven":
+            return self._build_ally_oven()
+        if key == "Toaster":
+            return self._build_ally_toaster()
+        return self._build_ally_fridge()
+
     def _build_opponent_fridge(self) -> Fighter:
+        max_hp = max(
+            1,
+            int(config.OPPONENT_FRIDGE_MAX_HP * self.opponent_hp_mult + 0.5),
+        )
         stats = FighterStats(
             name="Fridge",
-            max_hp=150,
-            strength=20,
+            max_hp=max_hp,
+            strength=config.OPPONENT_FRIDGE_STRENGTH,
             side=config.OPPONENT_SIDE,
+            initiative=config.OPPONENT_INITIATIVE,
+            attack1=AttackDamageSpec(
+                config.OPPONENT_ATTACK1_DICE_COUNT,
+                config.OPPONENT_ATTACK1_DICE_SIDES,
+                config.OPPONENT_ATTACK1_FLAT_BONUS,
+            ),
+            attack2=AttackDamageSpec(
+                config.OPPONENT_ATTACK2_DICE_COUNT,
+                config.OPPONENT_ATTACK2_DICE_SIDES,
+                config.OPPONENT_ATTACK2_FLAT_BONUS,
+            ),
         )
         idle_frames = assets.load_animation_frames(
             side=stats.side,
@@ -126,66 +323,294 @@ class Game:
             animation_cooldown_ms=config.ANIMATION_COOLDOWN_MS,
         )
 
+    def _start_new_game(self) -> None:
+        self._reset_game_state()
+        self.app_state = "playing"
+
+    def _return_to_main_menu(self) -> None:
+        self.app_state = "main_menu"
+        self.pressed_button_index = None
+
+    @staticmethod
+    def _hexagon_points(rect: pygame.Rect, cut: int) -> list[tuple[int, int]]:
+        x0, y0, w, h = rect.x, rect.y, rect.w, rect.h
+        x1, y1 = x0 + w, y0 + h
+        cy = y0 + h // 2
+        cut = min(cut, w // 4)
+        return [
+            (x0 + cut, y0),
+            (x1 - cut, y0),
+            (x1, cy),
+            (x1 - cut, y1),
+            (x0 + cut, y1),
+            (x0, cy),
+        ]
+
+    def _draw_hex_menu_button(
+        self,
+        rect: pygame.Rect,
+        label: str,
+        font: pygame.font.Font,
+    ) -> None:
+        cut = 18
+        inner = (45, 70, 130)
+        outer = (25, 25, 28)
+        highlight = (200, 210, 225)
+        pts = self._hexagon_points(rect, cut)
+        pygame.draw.polygon(self.screen, inner, pts)
+        pygame.draw.polygon(self.screen, outer, pts, 4)
+        inset = 3
+        inner_rect = rect.inflate(-inset * 2, -inset * 2)
+        inner_pts = self._hexagon_points(inner_rect, max(6, cut - inset))
+        pygame.draw.lines(self.screen, highlight, True, inner_pts, 2)
+        text = font.render(label, True, (8, 8, 12))
+        self.screen.blit(text, text.get_rect(center=rect.center))
+
+    def _upgrade_cost_for(self, key: str) -> int:
+        return config.UPGRADE_BASE_COST + self.upgrade_purchase_counts.get(key, 0)
+
+    def _try_purchase_upgrade(self, key: str) -> None:
+        cost = self._upgrade_cost_for(key)
+        if self.player_wins < cost:
+            return
+        if key == "cooldown":
+            max_reduction = max(0, config.ATTACK2_COOLDOWN_ALLY_TURNS - 1)
+            if self.meta_cooldown_reduction >= max_reduction:
+                return
+        self.player_wins -= cost
+        self.upgrade_purchase_counts[key] = self.upgrade_purchase_counts.get(key, 0) + 1
+        if key == "attack":
+            self.meta_attack_flat += config.ALLY_UPGRADE_ATTACK_FLAT_PER
+        elif key == "hp":
+            self.meta_hp_bonus += config.ALLY_UPGRADE_HP_PER
+        elif key == "cooldown":
+            max_reduction = max(0, config.ATTACK2_COOLDOWN_ALLY_TURNS - 1)
+            self.meta_cooldown_reduction = min(
+                self.meta_cooldown_reduction + 1,
+                max_reduction,
+            )
+        self._apply_opponent_random_buff()
+
+    def _apply_opponent_random_buff(self) -> None:
+        choice = random.choice(["hp", "attack", "interval"])
+        if choice == "hp":
+            self.opponent_hp_mult *= config.OPPONENT_BUFF_MULT
+        elif choice == "attack":
+            self.opponent_attack_mult *= config.OPPONENT_BUFF_MULT
+        else:
+            self.opponent_interval_mult *= config.OPPONENT_INTERVAL_FASTER_MULT
+            self.opponent_interval_mult = max(0.35, self.opponent_interval_mult)
+
     def handle_input(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self.pressed_button_index = None
-                if not self._is_combat_active() or self.current_turn != config.ALLY_SIDE:
-                    continue
-                for index, button_rect in enumerate(self.attack_button_rects):
-                    if button_rect.collidepoint(event.pos):
-                        self.pressed_button_index = index
-                        if index == 2:
-                            if self.ally_fighter.activate_block():
+                continue
+            if self.app_state == "main_menu":
+                self._handle_input_main_menu(event)
+            elif self.app_state == "character_screen":
+                self._handle_input_character_screen(event)
+            elif self.app_state == "upgrade_screen":
+                self._handle_input_upgrade_screen(event)
+            elif self.app_state == "playing":
+                self._handle_input_playing(event)
+
+    def _handle_input_main_menu(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.main_menu_new_game_rect.collidepoint(event.pos):
+                self._start_new_game()
+            elif self.main_menu_character_rect.collidepoint(event.pos):
+                self.app_state = "character_screen"
+
+    def _handle_input_character_screen(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._return_to_main_menu()
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.character_back_button_rect.collidepoint(event.pos):
+                self._return_to_main_menu()
+                return
+            for name, _surf, rect in self._character_portrait_items:
+                if rect.collidepoint(event.pos):
+                    self.selected_ally = name
+                    self._return_to_main_menu()
+                    return
+
+    def _handle_input_playing(self, event: pygame.event.Event) -> None:
+        if self.ally_fighter is None or self.opponent_fighter is None:
+            return
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.pressed_button_index = None
+            if self.game_over:
+                if (
+                    self.restart_button_rect is not None
+                    and self.restart_button_rect.collidepoint(event.pos)
+                ):
+                    self._go_to_character_select_after_game_over()
+                return
+            if not self._is_combat_active() or self.current_turn != config.ALLY_SIDE:
+                return
+            for index, button_rect in enumerate(self.attack_button_rects):
+                if button_rect.collidepoint(event.pos):
+                    self.pressed_button_index = index
+                    if index == 2:
+                        if self.ally_fighter.activate_block():
+                            self._handoff_to_opponent_turn()
+                    elif index == 1:
+                        # Attack2: same 5 Ally-turn cooldown for Fridge, Oven, and Toaster
+                        if (
+                            self.ally_attack2_cooldown_turns_remaining == 0
+                            and self.ally_fighter.alive
+                            and self.opponent_fighter.alive
+                            and self.ally_fighter.request_attack()
+                        ):
+                            damage = self.ally_fighter.roll_attack2_damage()
+                            self._apply_damage_to_all_opponents(damage)
+                            self.ally_attack2_cooldown_turns_remaining = (
+                                self._ally_attack2_cooldown_max_turns()
+                            )
+                            if self._is_combat_active():
                                 self._handoff_to_opponent_turn()
-                        elif index == 1:
-                            if (
-                                self.ally_attack2_cooldown_turns_remaining == 0
-                                and self.ally_fighter.alive
-                                and self.opponent_fighter.alive
-                                and self.ally_fighter.request_attack()
-                            ):
-                                damage = self._roll_attack2_damage()
-                                self.opponent_fighter.take_damage(damage)
-                                self.ally_attack2_cooldown_turns_remaining = (
-                                    config.ATTACK2_COOLDOWN_ALLY_TURNS
-                                )
-                                if self._is_combat_active():
-                                    self._handoff_to_opponent_turn()
-                        elif (
+                    elif index == 0:
+                        if (
                             self.ally_fighter.alive
                             and self.opponent_fighter.alive
                             and self.ally_fighter.request_attack()
                         ):
-                            damage = self.ally_fighter.roll_attack_damage()
-                            self.opponent_fighter.take_damage(damage)
+                            damage = self.ally_fighter.roll_attack1_damage()
+                            self._apply_damage_to_all_opponents(damage)
                             if self._is_combat_active():
                                 self._handoff_to_opponent_turn()
-                        break
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                self.pressed_button_index = None
+                    break
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.pressed_button_index = None
 
     def update(self) -> None:
+        if self.app_state != "playing":
+            return
+
+        if not self.game_over:
+            if self._is_side_wiped(config.ALLY_SIDE):
+                self.game_over = True
+                self.winner_side = config.OPPONENT_SIDE
+                self.pressed_button_index = None
+            elif self._is_side_wiped(config.OPPONENT_SIDE):
+                self.game_over = True
+                self.winner_side = config.ALLY_SIDE
+                self.pressed_button_index = None
+
+        if self.game_over:
+            return
+
+        if self.ally_fighter is None or self.opponent_fighter is None:
+            return
+
         now_ms = pygame.time.get_ticks()
         if (
             self._is_combat_active()
             and self.current_turn == config.OPPONENT_SIDE
             and now_ms >= self.opponent_attack_due_ms
         ):
-            should_block = random.random() < config.OPPONENT_BLOCK_CHANCE
-            if should_block:
-                self.opponent_fighter.activate_block()
-            elif self.opponent_fighter.request_attack():
-                damage = self.opponent_fighter.roll_attack_damage()
+            action_roll = random.random()
+            attack_threshold = config.OPPONENT_ATTACK_CHANCE
+            attack2_threshold = attack_threshold + config.OPPONENT_ATTACK2_CHANCE
+
+            if action_roll < attack_threshold and self.opponent_fighter.request_attack():
+                damage = self.opponent_fighter.roll_attack1_damage()
+                damage = max(1, int(damage * self.opponent_attack_mult + 0.5))
                 self.ally_fighter.take_damage(damage)
+            elif action_roll < attack2_threshold and self.opponent_fighter.request_attack():
+                damage = self.opponent_fighter.roll_attack2_damage()
+                damage = max(1, int(damage * self.opponent_attack_mult + 0.5))
+                self.ally_fighter.take_damage(damage)
+            else:
+                self.opponent_fighter.activate_block()
             if self._is_combat_active():
                 self._handoff_to_ally_turn()
         for fighter in self.fighters:
             fighter.update(now_ms)
 
     def render(self) -> None:
+        if self.app_state == "main_menu":
+            self.screen.blit(self.main_menu_image, (0, 0))
+            self._update_hover_cursor()
+        elif self.app_state == "character_screen":
+            self._render_character_screen()
+            self._update_hover_cursor()
+        elif self.app_state == "upgrade_screen":
+            self._render_upgrade_screen()
+            self._update_hover_cursor()
+        elif self.app_state == "playing":
+            self._render_playing()
+            self._update_hover_cursor()
+        pygame.display.flip()
+
+    def _render_character_screen(self) -> None:
+        self.screen.fill((0, 0, 0))
+        for _name, surf, rect in self._character_portrait_items:
+            self.screen.blit(surf, rect)
+        pygame.draw.rect(
+            self.screen,
+            config.CHARACTER_BACK_BUTTON_BG_COLOR,
+            self.character_back_button_rect,
+        )
+        pygame.draw.rect(
+            self.screen,
+            config.CHARACTER_BACK_BUTTON_BORDER_COLOR,
+            self.character_back_button_rect,
+            config.CHARACTER_BACK_BUTTON_BORDER_WIDTH,
+        )
+        label = self.character_back_font.render("VISSZA", True, config.CHARACTER_BACK_BUTTON_TEXT_COLOR)
+        self.screen.blit(label, label.get_rect(center=self.character_back_button_rect.center))
+
+    def _render_upgrade_screen(self) -> None:
+        self.screen.fill((0, 0, 0))
+        wins_s = self.upgrade_title_font.render(
+            f"Wins: {self.player_wins}", True, (240, 240, 245)
+        )
+        self.screen.blit(wins_s, wins_s.get_rect(midtop=(config.SCREEN_WIDTH // 2, 16)))
+        sub = self.upgrade_small_font.render(
+            "Cost per upgrade: 2 + P wins (P = times bought that upgrade)",
+            True,
+            (180, 180, 190),
+        )
+        self.screen.blit(sub, sub.get_rect(midtop=(config.SCREEN_WIDTH // 2, 52)))
+
+        for _name, surf, rect in self._character_portrait_items:
+            self.screen.blit(surf, rect)
+
+        labels = {
+            "attack": "ATTACK",
+            "hp": "HP",
+            "cooldown": "COOLDOWN",
+        }
+        for key, rect in self.upgrade_option_rects.items():
+            self._draw_hex_menu_button(rect, labels[key], self.character_back_font)
+            cost = self._upgrade_cost_for(key)
+            affordable = self.player_wins >= cost
+            col = (160, 220, 160) if affordable else (200, 100, 100)
+            cost_s = self.upgrade_small_font.render(f"{cost} wins", True, col)
+            self.screen.blit(
+                cost_s,
+                cost_s.get_rect(midtop=(rect.centerx, rect.bottom + 6)),
+            )
+
+        pygame.draw.rect(
+            self.screen,
+            config.CHARACTER_BACK_BUTTON_BG_COLOR,
+            self.character_back_button_rect,
+        )
+        pygame.draw.rect(
+            self.screen,
+            config.CHARACTER_BACK_BUTTON_BORDER_COLOR,
+            self.character_back_button_rect,
+            config.CHARACTER_BACK_BUTTON_BORDER_WIDTH,
+        )
+        back = self.character_back_font.render(
+            "VISSZA", True, config.CHARACTER_BACK_BUTTON_TEXT_COLOR
+        )
+        self.screen.blit(back, back.get_rect(center=self.character_back_button_rect.center))
+
+    def _render_playing(self) -> None:
         self.screen.blit(self.background_image, (0, 0))
         panel_top_y = config.SCREEN_HEIGHT - config.BOTTOM_PANEL_HEIGHT
         self.attack_button_rects = draw_bottom_panel(
@@ -220,7 +645,6 @@ class Game:
                 ),
             ],
         )
-        self._update_hover_cursor()
         for fighter in self.fighters:
             fighter.draw(self.screen, clip_bottom_y=panel_top_y)
             offset_x = (
@@ -259,25 +683,45 @@ class Game:
                     fill_color=config.COOLDOWNBAR_FILL_COLOR,
                 )
         self._draw_turn_indicator()
-        pygame.display.flip()
+        if self.game_over:
+            self._draw_restart_overlay()
 
     def _update_hover_cursor(self) -> None:
         mouse_position = pygame.mouse.get_pos()
-        should_use_hand = any(
-            button_rect.collidepoint(mouse_position) for button_rect in self.attack_button_rects
-        )
+        should_use_hand = False
+        if self.app_state == "main_menu":
+            should_use_hand = (
+                self.main_menu_new_game_rect.collidepoint(mouse_position)
+                or self.main_menu_character_rect.collidepoint(mouse_position)
+                or self.main_menu_upgrade_rect.collidepoint(mouse_position)
+            )
+        elif self.app_state == "character_screen":
+            should_use_hand = self.character_back_button_rect.collidepoint(
+                mouse_position
+            ) or any(
+                rect.collidepoint(mouse_position)
+                for _n, _s, rect in self._character_portrait_items
+            )
+        elif self.app_state == "upgrade_screen":
+            should_use_hand = self.character_back_button_rect.collidepoint(
+                mouse_position
+            ) or any(
+                r.collidepoint(mouse_position) for r in self.upgrade_option_rects.values()
+            )
+        elif self.app_state == "playing":
+            should_use_hand = any(
+                button_rect.collidepoint(mouse_position)
+                for button_rect in self.attack_button_rects
+            )
         if should_use_hand == self.cursor_is_hand:
             return
         try:
             cursor_type = (
-                pygame.SYSTEM_CURSOR_HAND
-                if should_use_hand
-                else pygame.SYSTEM_CURSOR_ARROW
+                pygame.SYSTEM_CURSOR_HAND if should_use_hand else pygame.SYSTEM_CURSOR_ARROW
             )
             pygame.mouse.set_cursor(cursor_type)
             self.cursor_is_hand = should_use_hand
         except pygame.error:
-            # Keep gameplay running if system cursor switching is unsupported.
             return
 
     def _draw_turn_indicator(self) -> None:
@@ -320,36 +764,107 @@ class Game:
             line_width,
         )
 
+    def _draw_restart_overlay(self) -> None:
+        overlay = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill(config.RESTART_OVERLAY_COLOR)
+        self.screen.blit(overlay, (0, 0))
+
+        button_x = (config.SCREEN_WIDTH - config.RESTART_BUTTON_WIDTH) // 2
+        button_y = (config.SCREEN_HEIGHT - config.RESTART_BUTTON_HEIGHT) // 2
+        self.restart_button_rect = pygame.Rect(
+            button_x,
+            button_y,
+            config.RESTART_BUTTON_WIDTH,
+            config.RESTART_BUTTON_HEIGHT,
+        )
+        pygame.draw.rect(self.screen, config.RESTART_BUTTON_BG_COLOR, self.restart_button_rect)
+        pygame.draw.rect(
+            self.screen,
+            config.RESTART_BUTTON_BORDER_COLOR,
+            self.restart_button_rect,
+            config.RESTART_BUTTON_BORDER_WIDTH,
+        )
+        label = "RESTART"
+        if self.winner_side == config.ALLY_SIDE:
+            label = "VICTORY - RESTART"
+        elif self.winner_side == config.OPPONENT_SIDE:
+            label = "DEFEAT - RESTART"
+        label_surface = self.restart_font.render(label, True, config.RESTART_BUTTON_TEXT_COLOR)
+        label_rect = label_surface.get_rect(center=self.restart_button_rect.center)
+        self.screen.blit(label_surface, label_rect)
+
     def _handoff_to_opponent_turn(self) -> None:
         self.current_turn = config.OPPONENT_SIDE
-        self.opponent_attack_due_ms = pygame.time.get_ticks() + config.OPPONENT_ATTACK_INTERVAL_MS
+        interval = max(
+            200,
+            int(
+                config.OPPONENT_ATTACK_INTERVAL_MS * self.opponent_interval_mult + 0.5
+            ),
+        )
+        self.opponent_attack_due_ms = pygame.time.get_ticks() + interval
 
     def _handoff_to_ally_turn(self) -> None:
         self.current_turn = config.ALLY_SIDE
         if self.ally_attack2_cooldown_turns_remaining > 0:
             self.ally_attack2_cooldown_turns_remaining -= 1
 
-    def _roll_attack2_damage(self) -> int:
-        return sum(
-            random.randint(1, config.ATTACK2_DAMAGE_DICE_SIDES)
-            for _ in range(config.ATTACK2_DAMAGE_DICE_COUNT)
-        ) + config.ATTACK2_DAMAGE_FLAT_BONUS
+    def _apply_damage_to_all_opponents(self, damage: int) -> None:
+        """AoE: apply the same rolled damage to every living opponent."""
+        for fighter in self.fighters:
+            if fighter.side == config.OPPONENT_SIDE and fighter.alive:
+                fighter.take_damage(damage)
+
+    def _apply_first_turn_from_initiative(self) -> None:
+        if self.ally_fighter is None or self.opponent_fighter is None:
+            return
+        now_ms = pygame.time.get_ticks()
+        if self.ally_fighter.initiative >= self.opponent_fighter.initiative:
+            self.current_turn = config.ALLY_SIDE
+            self.opponent_attack_due_ms = 0
+        else:
+            self.current_turn = config.OPPONENT_SIDE
+            self.opponent_attack_due_ms = now_ms
 
     def _get_attack2_cooldown_ratio(self) -> float:
-        if config.ATTACK2_COOLDOWN_ALLY_TURNS <= 0:
+        max_turns = self._ally_attack2_cooldown_max_turns()
+        if max_turns <= 0:
             return 1.0
         remaining = max(0, self.ally_attack2_cooldown_turns_remaining)
         return max(
             0.0,
-            min(
-                1.0,
-                (config.ATTACK2_COOLDOWN_ALLY_TURNS - remaining)
-                / config.ATTACK2_COOLDOWN_ALLY_TURNS,
-            ),
+            min(1.0, (max_turns - remaining) / max_turns),
         )
 
     def _is_combat_active(self) -> bool:
+        if self.ally_fighter is None or self.opponent_fighter is None:
+            return False
         return self.ally_fighter.alive and self.opponent_fighter.alive
+
+    def _is_side_wiped(self, side: str) -> bool:
+        if not self.fighters:
+            return False
+        side_fighters = [fighter for fighter in self.fighters if fighter.side == side]
+        return bool(side_fighters) and all(not fighter.alive for fighter in side_fighters)
+
+    def _go_to_character_select_after_game_over(self) -> None:
+        """Leave game-over overlay and open the Ally character portrait screen."""
+        self.game_over = False
+        self.winner_side = None
+        self.restart_button_rect = None
+        self.pressed_button_index = None
+        self.app_state = "character_screen"
+
+    def _reset_game_state(self) -> None:
+        self.ally_fighter = self._build_ally_from_selection()
+        self.opponent_fighter = self._build_opponent_fridge()
+        self.fighters = [self.ally_fighter, self.opponent_fighter]
+        self.attack_button_rects = []
+        self.pressed_button_index = None
+        self.ally_attack2_cooldown_turns_remaining = 0
+        self.game_over = False
+        self.winner_side = None
+        self.restart_button_rect = None
+        self._apply_first_turn_from_initiative()
 
     def run(self) -> None:
         while self.running:

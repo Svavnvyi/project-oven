@@ -9,11 +9,29 @@ from game import config
 
 
 @dataclass(frozen=True)
+class AttackDamageSpec:
+    """Sum of `dice_count` dice with `dice_sides` each, plus flat bonus."""
+
+    dice_count: int
+    dice_sides: int
+    flat_bonus: int
+
+    def roll(self) -> int:
+        return (
+            sum(random.randint(1, self.dice_sides) for _ in range(self.dice_count))
+            + self.flat_bonus
+        )
+
+
+@dataclass(frozen=True)
 class FighterStats:
     name: str
     max_hp: int
     strength: int
     side: str
+    initiative: int
+    attack1: AttackDamageSpec
+    attack2: AttackDamageSpec
 
 
 class Fighter:
@@ -31,6 +49,8 @@ class Fighter:
         self.hp = stats.max_hp
         self.strength = stats.strength
         self.side = stats.side
+        self.initiative = stats.initiative
+        self._stats = stats
         self.alive = True
         self.block_pending = False
 
@@ -53,29 +73,32 @@ class Fighter:
     def request_attack(self) -> bool:
         if (
             not self.alive
-            or self.block_pending
             or self.is_attacking()
             or "attack" not in self.animations
         ):
             return False
+        # Attacking cancels block stance so we never soft-lock when the opponent
+        # only blocks (no damage to clear block_pending) or after a mid-fight block.
+        self.block_pending = False
         self.state = "attack"
         self.frame_index = 0
         self.update_time = pygame.time.get_ticks()
         return True
 
     def activate_block(self) -> bool:
-        if not self.alive:
+        if not self.alive or self.is_attacking():
+            # Cannot start block during an attack — otherwise block_pending freezes
+            # update() and the attack never completes (soft-lock on Attack/Attack2).
             return False
         self.block_pending = True
-        # Freeze whichever frame is currently visible while block is active.
+        # Freeze idle animation while block is active (see update()).
         return True
 
-    @staticmethod
-    def roll_attack_damage() -> int:
-        return sum(
-            random.randint(1, config.FRIDGE_DAMAGE_DICE_SIDES)
-            for _ in range(config.FRIDGE_DAMAGE_DICE_COUNT)
-        ) + config.FRIDGE_DAMAGE_FLAT_BONUS
+    def roll_attack1_damage(self) -> int:
+        return self._stats.attack1.roll()
+
+    def roll_attack2_damage(self) -> int:
+        return self._stats.attack2.roll()
 
     def take_damage(self, amount: int) -> None:
         if not self.alive:
@@ -93,7 +116,9 @@ class Fighter:
             self.update_time = pygame.time.get_ticks()
 
     def update(self, now_ms: int) -> None:
-        if self.alive and self.block_pending:
+        # Only freeze idle while blocking; attacks must always finish even if block
+        # was pressed mid-animation (activate_block now rejects that case).
+        if self.alive and self.block_pending and not self.is_attacking():
             self.image = self.animations[self.state][self.frame_index]
             return
 
