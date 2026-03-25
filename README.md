@@ -1,6 +1,6 @@
 # Project Oven
 
-Top-down Pygame prototype where you move a fridge sprite around the screen.
+A fun turn-based battle game where kitchen appliances go head-to-head.
 
 ## Setup
 
@@ -16,7 +16,4 @@ python main.py
 
 ## Controls
 
-- Move left: `A` or `Left Arrow`
-- Move right: `D` or `Right Arrow`
-- Move up: `W` or `Up Arrow`
-- Move down: `S` or `Down Arrow`
+- Mouse
