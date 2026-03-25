@@ -10,6 +10,14 @@ SCREEN_HEIGHT = 500 + BOTTOM_PANEL_HEIGHT
 
 WINDOW_TITLE = "Konyhai Karneval"
 
+# HUD: meta currency (same as player_wins); icon + amount top-right
+WIN_COINS_HUD_MARGIN_X = 20
+WIN_COINS_HUD_MARGIN_Y = 16
+WIN_COINS_HUD_COLOR = (240, 240, 245)
+WIN_COIN_IMAGE_PATH = "ui/Win_coin.png"
+WIN_COIN_HUD_HEIGHT = 20
+WIN_COIN_HUD_GAP = 6
+
 # Main menu (full-screen image; click targets match scripts/gen_main_menu_png.py layout)
 MAIN_MENU_IMAGE_PATH = "ui/main_menu.png"
 MAIN_MENU_NEW_GAME_BUTTON = (70, 258, 260, 90)
@@ -21,6 +29,9 @@ UPGRADE_BASE_COST = 2
 ALLY_UPGRADE_ATTACK_FLAT_PER = 2
 ALLY_UPGRADE_HP_PER = 15
 OPPONENT_BUFF_MULT = 1.1
+# When True, each player upgrade also randomly buffs opponent HP or attack by +10%.
+# Disabled until balance is ready (interval-only buff still applies when False).
+ENABLE_OPPONENT_PERCENT_STAT_BUFFS = False
 OPPONENT_INTERVAL_FASTER_MULT = 0.9
 
 # Upgrade screen: three option buttons under portraits (y, size, gap)
@@ -29,12 +40,13 @@ UPGRADE_OPTION_BUTTON_HEIGHT = 48
 UPGRADE_OPTION_ROW_Y = 340
 UPGRADE_OPTION_GAP = 24
 
-# Character selection screen (black background, three Ally idle portraits)
-CHARACTER_PORTRAIT_PATHS: tuple[tuple[str, str], ...] = (
-    ("Fridge", "Ally/Fridge/Idle/Idle0R.png"),
-    ("Toaster", "Ally/Toaster/Idle/Idle_Toaster.png"),
-    # ("Oven", "Ally/Oven/Idle/Idle0R.png"),
+# Character selection screen (black background; idle animation per ally name)
+CHARACTER_PORTRAIT_ALLIES: tuple[str, ...] = (
+    "Fridge",
+    "Toaster",
+    # "Oven",
 )
+CHARACTER_PORTRAIT_ANIM_COOLDOWN_MS = 150
 CHARACTER_PORTRAIT_MAX_HEIGHT = 220
 CHARACTER_PORTRAIT_GAP = 40
 CHARACTER_PORTRAIT_TOP_MARGIN = 80
@@ -81,6 +93,12 @@ IDLE_ANIMATION_FOLDER = "Idle"
 ATTACK_ANIMATION_FOLDER = "Attack"
 ATTACK2_ANIMATION_FOLDER = "Attack2"
 DEATH_ANIMATION_FOLDER = "Death"
+BLOCK_ANIMATION_FOLDER = "Block"
+BLOCK_ANIMATION_PREFIX = "Block"
+FRIDGE_BLOCK_FRAMES = 4
+BLOCK_HOLD_MS = 1000
+FRIDGE_ATTACK2_SCALE_RAMP_MS = 1000
+FRIDGE_ATTACK2_VISUAL_SCALE_MAX = 1.25
 
 IDLE_ANIMATION_PREFIX = "Idle"
 ATTACK_ANIMATION_PREFIX = "XFallattack"
@@ -180,6 +198,10 @@ RESTART_BUTTON_BG_COLOR = (35, 35, 35)
 RESTART_BUTTON_BORDER_COLOR = (225, 225, 225)
 RESTART_BUTTON_TEXT_COLOR = (245, 245, 245)
 RESTART_OVERLAY_COLOR = (0, 0, 0, 120)
+# RESTART: second click within this window (ms) = full reset (ally upgrades + opponent scaling); keeps win coins
+RESTART_DOUBLE_CLICK_MS = 500
+# If no second click, go to character select after this delay (ms)
+RESTART_SINGLE_CLICK_DELAY_MS = 500
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ASSETS_ROOT = PROJECT_ROOT / "assets"
