@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import pygame
 
-from game import config
+from game import config, sfx
 
 
 @dataclass(frozen=True)
@@ -96,6 +96,7 @@ class Fighter:
         *,
         fridge_attack2_visual: bool = False,
         attack_animation_key: str = "attack",
+        is_attack2: bool = False,
     ) -> bool:
         if (
             not self.alive
@@ -117,10 +118,14 @@ class Fighter:
             self._fridge_attack2_start_ms = pygame.time.get_ticks()
             self.state = "idle"
             self.frame_index = 0
+            sfx.play_character_action(self.name, "attack2")
             return True
         self._attack_animation_key = attack_animation_key
         self.state = "attack"
         self.frame_index = 0
+        sfx.play_character_action(
+            self.name, "attack2" if is_attack2 else "attack"
+        )
         return True
 
     def activate_block(self) -> bool:
@@ -137,6 +142,7 @@ class Fighter:
             self.frame_index = 0
             self.block_phase = "forward"
             self.update_time = pygame.time.get_ticks()
+        sfx.play_character_action(self.name, "block")
         return True
 
     def roll_attack1_damage(self) -> int:

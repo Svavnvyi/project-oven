@@ -138,6 +138,18 @@ class Game:
             self.win_coin_hud_image = raw_coin
         self._win_coin_granted_this_match = False
 
+        pygame.mixer.init()
+        _music_path = config.ASSETS_ROOT / config.BACKGROUND_MUSIC_RELATIVE_PATH
+        if _music_path.is_file():
+            try:
+                pygame.mixer.music.load(str(_music_path))
+                pygame.mixer.music.set_volume(config.BACKGROUND_MUSIC_VOLUME)
+                pygame.mixer.music.play(-1)
+            except pygame.error as exc:
+                print(f"Background music could not play: {exc}")
+        else:
+            print(f"Background music file not found: {_music_path}")
+
     @staticmethod
     def _load_ally_idle_frames_for_portrait(ally_name: str) -> list[pygame.Surface]:
         sm = config.IDLE_SCALE_MULTIPLIER
@@ -629,6 +641,7 @@ class Game:
                                     if self.ally_fighter.name == "Toaster"
                                     else "attack"
                                 ),
+                                is_attack2=True,
                             )
                         ):
                             damage = self.ally_fighter.roll_attack2_damage()
@@ -700,7 +713,8 @@ class Game:
                 damage = max(1, int(damage * self.opponent_attack_mult + 0.5))
                 self.ally_fighter.take_damage(damage)
             elif action_roll < attack2_threshold and self.opponent_fighter.request_attack(
-                fridge_attack2_visual=self.opponent_fighter.name == "Fridge"
+                fridge_attack2_visual=self.opponent_fighter.name == "Fridge",
+                is_attack2=True,
             ):
                 damage = self.opponent_fighter.roll_attack2_damage()
                 damage = max(1, int(damage * self.opponent_attack_mult + 0.5))

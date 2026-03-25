@@ -205,3 +205,10 @@ RESTART_SINGLE_CLICK_DELAY_MS = 500
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ASSETS_ROOT = PROJECT_ROOT / "assets"
+
+# Looping background music (pygame.mixer.music), relative to ASSETS_ROOT
+BACKGROUND_MUSIC_RELATIVE_PATH = "music/music.mp3"
+BACKGROUND_MUSIC_VOLUME = 0.4
+
+# One-shot SFX (pygame.mixer.Sound), relative paths under assets/sfx/<character>/
+SFX_VOLUME = 0.7
