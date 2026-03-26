@@ -54,6 +54,15 @@ class Game:
                 self.main_menu_image,
                 (config.SCREEN_WIDTH, config.SCREEN_HEIGHT),
             )
+        _mm_w, _mm_h = self.main_menu_image.get_size()
+        _px = self.main_menu_image.get_at(
+            (_mm_w // 2, min(24, _mm_h - 1))
+        )
+        self._character_screen_background_color = (
+            int(_px[0]),
+            int(_px[1]),
+            int(_px[2]),
+        )
         self.main_menu_new_game_rect = pygame.Rect(*config.MAIN_MENU_NEW_GAME_BUTTON)
         self.main_menu_character_rect = pygame.Rect(*config.MAIN_MENU_CHARACTER_BUTTON)
         #self.main_menu_upgrade_rect = pygame.Rect(*config.MAIN_MENU_UPGRADE_BUTTON)
@@ -223,10 +232,12 @@ class Game:
         for slot in self._character_portrait_slots:
             if len(slot.frames) <= 1:
                 continue
-            if (
-                now_ms - slot.last_update_ms
-                >= config.CHARACTER_PORTRAIT_ANIM_COOLDOWN_MS
-            ):
+            cooldown_ms = (
+                config.TOASTER_IDLE_ANIMATION_COOLDOWN_MS
+                if slot.name == "Toaster"
+                else config.CHARACTER_PORTRAIT_ANIM_COOLDOWN_MS
+            )
+            if now_ms - slot.last_update_ms >= cooldown_ms:
                 slot.last_update_ms = now_ms
                 slot.frame_index = (slot.frame_index + 1) % len(slot.frames)
 
@@ -377,18 +388,23 @@ class Game:
         attack2_frames = assets.load_ally_toaster_attack2_frames(
             scale_multiplier=config.IDLE_SCALE_MULTIPLIER,
         )
+        block_frames = assets.load_ally_toaster_block_frames(
+            scale_multiplier=config.IDLE_SCALE_MULTIPLIER,
+        )
         death_frames = assets.load_ally_toaster_death_placeholder(idle_frames)
         return Fighter(
             x=self.ALLY_SPAWN_X,
-            y=self.FIGHTER_SPAWN_Y,
+            y=self.FIGHTER_SPAWN_Y - 5,
             stats=stats,
             animations={
                 "idle": idle_frames,
                 "attack": attack_frames,
                 "attack2": attack2_frames,
+                "block": block_frames,
                 "death": death_frames,
             },
             animation_cooldown_ms=config.ANIMATION_COOLDOWN_MS,
+            idle_animation_cooldown_ms=config.TOASTER_IDLE_ANIMATION_COOLDOWN_MS,
         )
 
     def _build_ally_from_selection(self) -> Fighter:
@@ -750,7 +766,7 @@ class Game:
         pygame.display.flip()
 
     def _render_character_screen(self) -> None:
-        self.screen.fill((0, 0, 0))
+        self.screen.fill(self._character_screen_background_color)
         self._draw_win_coins_hud()
         for slot in self._character_portrait_slots:
             self.screen.blit(slot.frames[slot.frame_index], slot.rect)

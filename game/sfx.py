@@ -34,4 +34,7 @@ def play_character_action(character_name: str, action: ActionKind) -> None:
             return
         sound.set_volume(config.SFX_VOLUME)
         _sound_cache[key] = sound
-    sound.play()
+    if character_name == "Fridge" and action in ("attack", "attack2"):
+        sound.play(maxtime=config.FRIDGE_ATTACK_SFX_MAX_MS)
+    else:
+        sound.play()

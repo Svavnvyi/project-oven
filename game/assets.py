@@ -82,6 +82,11 @@ def load_ally_toaster_attack2_frames(*, scale_multiplier: float = 1.0) -> list[p
     return load_frames_from_paths(paths, scale_multiplier=scale_multiplier)
 
 
+def load_ally_toaster_block_frames(*, scale_multiplier: float = 1.0) -> list[pygame.Surface]:
+    paths = [f"Ally/Toaster/Block/Block{i}R.png" for i in range(0, 6)]
+    return load_frames_from_paths(paths, scale_multiplier=scale_multiplier)
+
+
 def load_ally_toaster_death_placeholder(idle_frames: list[pygame.Surface]) -> list[pygame.Surface]:
     """No death art: repeat first idle frame so death state is valid."""
     if not idle_frames:

@@ -40,7 +40,7 @@ UPGRADE_OPTION_BUTTON_HEIGHT = 48
 UPGRADE_OPTION_ROW_Y = 340
 UPGRADE_OPTION_GAP = 24
 
-# Character selection screen (black background; idle animation per ally name)
+# Character selection screen (idle animation per ally name; fill matches main menu sky)
 CHARACTER_PORTRAIT_ALLIES: tuple[str, ...] = (
     "Fridge",
     "Toaster",
@@ -51,7 +51,7 @@ CHARACTER_PORTRAIT_MAX_HEIGHT = 220
 CHARACTER_PORTRAIT_GAP = 40
 CHARACTER_PORTRAIT_TOP_MARGIN = 80
 CHARACTER_PORTRAIT_HOVER_BORDER_WIDTH = 3
-CHARACTER_PORTRAIT_HOVER_BORDER_COLOR = (220, 220, 100)
+CHARACTER_PORTRAIT_HOVER_BORDER_COLOR = (0, 0, 0)
 CHARACTER_BACK_BUTTON_WIDTH = 200
 CHARACTER_BACK_BUTTON_HEIGHT = 56
 CHARACTER_BACK_BUTTON_BOTTOM_MARGIN = 48
@@ -97,6 +97,8 @@ BLOCK_ANIMATION_FOLDER = "Block"
 BLOCK_ANIMATION_PREFIX = "Block"
 FRIDGE_BLOCK_FRAMES = 4
 BLOCK_HOLD_MS = 1000
+# Toaster: pause on last block frame before reverse (seconds as ms)
+TOASTER_BLOCK_HOLD_MS = 500
 FRIDGE_ATTACK2_SCALE_RAMP_MS = 1000
 FRIDGE_ATTACK2_VISUAL_SCALE_MAX = 1.25
 
@@ -108,6 +110,8 @@ RIGHT_FACING_SUFFIX = "R"
 LEFT_FACING_SUFFIX = "L"
 
 ANIMATION_COOLDOWN_MS = 150
+# Toaster ally: idle cycles at half speed (double ms between frames)
+TOASTER_IDLE_ANIMATION_COOLDOWN_MS = ANIMATION_COOLDOWN_MS * 2
 
 # Initiative (first turn: ally starts if ally_initiative >= opponent_initiative)
 OPPONENT_INITIATIVE = 5
@@ -212,3 +216,5 @@ BACKGROUND_MUSIC_VOLUME = 0.4
 
 # One-shot SFX (pygame.mixer.Sound), relative paths under assets/sfx/<character>/
 SFX_VOLUME = 0.7
+# Fridge Attack / Attack2: pygame Sound.play(maxtime=...) caps playback length
+FRIDGE_ATTACK_SFX_MAX_MS = 2000

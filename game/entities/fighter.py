@@ -43,6 +43,7 @@ class Fighter:
         stats: FighterStats,
         animations: dict[str, list[pygame.Surface]],
         animation_cooldown_ms: int = config.ANIMATION_COOLDOWN_MS,
+        idle_animation_cooldown_ms: int | None = None,
     ) -> None:
         self.name = stats.name
         self.max_hp = stats.max_hp
@@ -55,11 +56,13 @@ class Fighter:
         self.block_pending = False
         self.block_phase: str | None = None
         self.block_hold_start_ms = 0
+        self._block_reverse_sweeps_remaining = 1
 
         self.animations = animations
         self.state = "idle"
         self.frame_index = 0
         self.animation_cooldown_ms = animation_cooldown_ms
+        self._idle_animation_cooldown_ms = idle_animation_cooldown_ms
         self.update_time = pygame.time.get_ticks()
 
         self.image = self.animations[self.state][self.frame_index]
@@ -81,11 +84,17 @@ class Fighter:
     def is_dying(self) -> bool:
         return self.state == "death"
 
+    def _advance_cooldown_ms(self) -> int:
+        if self.state == "idle" and self._idle_animation_cooldown_ms is not None:
+            return self._idle_animation_cooldown_ms
+        return self.animation_cooldown_ms
+
     def _exit_block_animation(self) -> None:
         if self.state == "block":
             self.state = "idle"
             self.frame_index = 0
             self.block_phase = None
+            self._block_reverse_sweeps_remaining = 1
             idle = self.animations["idle"][0]
             c = self.rect.center
             self.image = idle
@@ -118,7 +127,6 @@ class Fighter:
             self._fridge_attack2_start_ms = pygame.time.get_ticks()
             self.state = "idle"
             self.frame_index = 0
-            sfx.play_character_action(self.name, "attack2")
             return True
         self._attack_animation_key = attack_animation_key
         self.state = "attack"
@@ -137,6 +145,7 @@ class Fighter:
         ):
             return False
         self.block_pending = True
+        self._block_reverse_sweeps_remaining = 1
         if "block" in self.animations:
             self.state = "block"
             self.frame_index = 0
@@ -164,6 +173,7 @@ class Fighter:
             self.alive = False
             self.block_pending = False
             self.block_phase = None
+            self._block_reverse_sweeps_remaining = 1
             self._fridge_attack2_visual = False
             self._fridge_attack2_ramp_down = False
             self._fridge_attack2_windup = False
@@ -204,9 +214,15 @@ class Fighter:
             c = self.rect.center
             self.image = surf
             self.rect = surf.get_rect(center=c)
-            if now_ms - self.block_hold_start_ms >= config.BLOCK_HOLD_MS:
+            hold_ms = (
+                config.TOASTER_BLOCK_HOLD_MS
+                if self.name == "Toaster"
+                else config.BLOCK_HOLD_MS
+            )
+            if now_ms - self.block_hold_start_ms >= hold_ms:
                 self.block_phase = "reverse"
                 self.update_time = now_ms
+                self._block_reverse_sweeps_remaining = 1
             return
 
         if self.block_phase == "reverse":
@@ -215,15 +231,20 @@ class Fighter:
                 if self.frame_index > 0:
                     self.frame_index -= 1
                 else:
-                    self.state = "idle"
-                    self.frame_index = 0
-                    self.block_phase = None
-                    self.block_pending = False
-                    idle = self.animations["idle"][0]
-                    c = self.rect.center
-                    self.image = idle
-                    self.rect = idle.get_rect(center=c)
-                    return
+                    self._block_reverse_sweeps_remaining -= 1
+                    if self._block_reverse_sweeps_remaining > 0:
+                        self.frame_index = last_i
+                    else:
+                        self.state = "idle"
+                        self.frame_index = 0
+                        self.block_phase = None
+                        self.block_pending = False
+                        self._block_reverse_sweeps_remaining = 1
+                        idle = self.animations["idle"][0]
+                        c = self.rect.center
+                        self.image = idle
+                        self.rect = idle.get_rect(center=c)
+                        return
             surf = frames[self.frame_index]
             c = self.rect.center
             self.image = surf
@@ -283,6 +304,7 @@ class Fighter:
                 self.frame_index = 0
                 self.update_time = now_ms
                 self.image = self.animations[self._attack_animation_key][0]
+                sfx.play_character_action(self.name, "attack2")
             return
 
         if self.alive and self.block_pending and not self.is_attacking():
@@ -299,7 +321,7 @@ class Fighter:
             if self.state == "attack"
             else self.animations[self.state]
         )
-        if now_ms - self.update_time > self.animation_cooldown_ms:
+        if now_ms - self.update_time > self._advance_cooldown_ms():
             self.update_time = now_ms
             self.frame_index += 1
 
