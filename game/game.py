@@ -79,6 +79,8 @@ class Game:
         self.opponent_hp_mult = 1.0
         self.opponent_attack_mult = 1.0
         self.opponent_interval_mult = 1.0
+        self.opponent_scaling_switch_on = True
+        self.opponent_scaling_switch_rect = pygame.Rect(0, 0, 0, 0)
 
         self.upgrade_option_rects: dict[str, pygame.Rect] = {}
         total_w = (
@@ -259,6 +261,59 @@ class Game:
         self.screen.blit(self.win_coin_hud_image, (icon_x, y_icon))
         self.screen.blit(text_s, text_rect)
 
+    def _draw_opponent_scaling_switch(self) -> None:
+        """Top-right below win coins: ON/OFF label + clickable track (thumb)."""
+        text_s = self.upgrade_small_font.render(
+            str(self.win_coins), True, config.WIN_COINS_HUD_COLOR
+        )
+        iw, ih = self.win_coin_hud_image.get_size()
+        tw, th = text_s.get_size()
+        total_h = max(ih, th)
+        y_base = config.WIN_COINS_HUD_MARGIN_Y
+        y_switch = y_base + total_h + config.OPPONENT_SCALING_SWITCH_TOP_GAP
+        right_x = config.SCREEN_WIDTH - config.WIN_COINS_HUD_MARGIN_X
+        track_w = config.OPPONENT_SCALING_SWITCH_TRACK_W
+        track_h = config.OPPONENT_SCALING_SWITCH_TRACK_H
+        m = config.OPPONENT_SCALING_SWITCH_THUMB_MARGIN
+        label_text = "ON" if self.opponent_scaling_switch_on else "OFF"
+        label_s = self.upgrade_small_font.render(
+            label_text, True, config.OPPONENT_SCALING_SWITCH_LABEL_COLOR
+        )
+        lw, lh = label_s.get_size()
+        gap = 6
+        total_w = lw + gap + track_w
+        left_x = right_x - total_w
+        track_y = y_switch + max(0, (lh - track_h) // 2)
+        track_rect = pygame.Rect(left_x + lw + gap, track_y, track_w, track_h)
+        self.opponent_scaling_switch_rect = pygame.Rect(
+            left_x, y_switch, total_w, max(lh, track_h)
+        )
+        self.screen.blit(label_s, (left_x, y_switch))
+        track_color = (
+            config.OPPONENT_SCALING_SWITCH_TRACK_ON
+            if self.opponent_scaling_switch_on
+            else config.OPPONENT_SCALING_SWITCH_TRACK_OFF
+        )
+        pygame.draw.rect(self.screen, track_color, track_rect)
+        pygame.draw.rect(self.screen, (28, 28, 32), track_rect, 1)
+        thumb_side = max(8, track_h - 2 * m)
+        thumb_x = (
+            track_rect.right - m - thumb_side
+            if self.opponent_scaling_switch_on
+            else track_rect.left + m
+        )
+        thumb_y = track_rect.centery - thumb_side // 2
+        thumb_color = (
+            config.OPPONENT_SCALING_SWITCH_THUMB_ON
+            if self.opponent_scaling_switch_on
+            else config.OPPONENT_SCALING_SWITCH_THUMB_OFF
+        )
+        pygame.draw.rect(
+            self.screen,
+            thumb_color,
+            pygame.Rect(thumb_x, thumb_y, thumb_side, thumb_side),
+        )
+
     def _ally_attack2_cooldown_max_turns(self) -> int:
         return max(
             1,
@@ -428,21 +483,22 @@ class Game:
         )
         hp_base = config.OPPONENT_FRIDGE_MAX_HP
         if random.random() < config.OPPONENT_FRIDGE_TOASTER_STAT_REPLACE_CHANCE:
-            which = random.choice(("attack1", "attack2", "hp"))
-            if which == "attack1":
-                attack1 = AttackDamageSpec(
-                    config.TOASTER_ATTACK1_DICE_COUNT,
-                    config.TOASTER_ATTACK1_DICE_SIDES,
-                    config.TOASTER_ATTACK1_FLAT_BONUS,
-                )
-            elif which == "attack2":
-                attack2 = AttackDamageSpec(
-                    config.TOASTER_ATTACK2_DICE_COUNT,
-                    config.TOASTER_ATTACK2_DICE_SIDES,
-                    config.TOASTER_ATTACK2_FLAT_BONUS,
-                )
+            if random.random() < config.OPPONENT_FRIDGE_TOASTER_REPLACE_NEITHER_CHANCE:
+                pass
             else:
-                hp_base = config.TOASTER_ALLY_MAX_HP
+                which = random.choice(("attack1", "attack2"))
+                if which == "attack1":
+                    attack1 = AttackDamageSpec(
+                        config.TOASTER_ATTACK1_DICE_COUNT,
+                        config.TOASTER_ATTACK1_DICE_SIDES,
+                        config.TOASTER_ATTACK1_FLAT_BONUS,
+                    )
+                else:
+                    attack2 = AttackDamageSpec(
+                        config.TOASTER_ATTACK2_DICE_COUNT,
+                        config.TOASTER_ATTACK2_DICE_SIDES,
+                        config.TOASTER_ATTACK2_FLAT_BONUS,
+                    )
         max_hp = max(1, int(hp_base * self.opponent_hp_mult + 0.5))
         stats = FighterStats(
             name="Fridge",
@@ -578,10 +634,20 @@ class Game:
         self.opponent_attack_mult = 1.0
         self.opponent_interval_mult = 1.0
 
+    def _reset_opponent_scaling_mults_only(self) -> None:
+        self.opponent_hp_mult = 1.0
+        self.opponent_attack_mult = 1.0
+        self.opponent_interval_mult = 1.0
+
+    def _toggle_opponent_scaling_switch(self) -> None:
+        self.opponent_scaling_switch_on = not self.opponent_scaling_switch_on
+        if not self.opponent_scaling_switch_on:
+            self._reset_opponent_scaling_mults_only()
+
     def _apply_opponent_random_buff(self) -> None:
-        choices: list[str] = ["interval"]
-        if config.ENABLE_OPPONENT_PERCENT_STAT_BUFFS:
-            choices.extend(["hp", "attack"])
+        if not self.opponent_scaling_switch_on:
+            return
+        choices = ["hp", "attack", "interval"]
         choice = random.choice(choices)
         if choice == "hp":
             self.opponent_hp_mult *= config.OPPONENT_BUFF_MULT
@@ -616,6 +682,9 @@ class Game:
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self._return_to_main_menu()
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.opponent_scaling_switch_rect.collidepoint(event.pos):
+                self._toggle_opponent_scaling_switch()
+                return
             if self.character_back_button_rect.collidepoint(event.pos):
                 self._return_to_main_menu()
                 return
@@ -625,7 +694,26 @@ class Game:
                     self._return_to_main_menu()
                     return
 
+    def _handle_input_upgrade_screen(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._return_to_main_menu()
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.opponent_scaling_switch_rect.collidepoint(event.pos):
+                self._toggle_opponent_scaling_switch()
+                return
+            if self.character_back_button_rect.collidepoint(event.pos):
+                self._return_to_main_menu()
+                return
+            for key, rect in self.upgrade_option_rects.items():
+                if rect.collidepoint(event.pos):
+                    self._try_purchase_upgrade(key)
+                    return
+
     def _handle_input_playing(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.opponent_scaling_switch_rect.collidepoint(event.pos):
+                self._toggle_opponent_scaling_switch()
+                return
         if self.ally_fighter is None or self.opponent_fighter is None:
             return
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -726,6 +814,7 @@ class Game:
                 if not self._win_coin_granted_this_match:
                     self.player_wins += 1
                     self._win_coin_granted_this_match = True
+                    self._apply_opponent_random_buff()
 
         if self.ally_fighter is None or self.opponent_fighter is None:
             return
@@ -784,6 +873,7 @@ class Game:
     def _render_character_screen(self) -> None:
         self.screen.fill(self._character_screen_background_color)
         self._draw_win_coins_hud()
+        self._draw_opponent_scaling_switch()
         for slot in self._character_portrait_slots:
             self.screen.blit(slot.frames[slot.frame_index], slot.rect)
         mouse_pos = pygame.mouse.get_pos()
@@ -929,33 +1019,34 @@ class Game:
                 )
         self._draw_turn_indicator()
         self._draw_win_coins_hud()
+        self._draw_opponent_scaling_switch()
         if self.game_over:
             self._draw_restart_overlay()
 
     def _update_hover_cursor(self) -> None:
         mouse_position = pygame.mouse.get_pos()
         should_use_hand = False
+        switch_hover = self.opponent_scaling_switch_rect.collidepoint(mouse_position)
         if self.app_state == "main_menu":
-            should_use_hand = (
+            should_use_hand = switch_hover or (
                 self.main_menu_new_game_rect.collidepoint(mouse_position)
                 or self.main_menu_character_rect.collidepoint(mouse_position)
-                #or self.main_menu_upgrade_rect.collidepoint(mouse_position)
             )
         elif self.app_state == "character_screen":
-            should_use_hand = self.character_back_button_rect.collidepoint(
+            should_use_hand = switch_hover or self.character_back_button_rect.collidepoint(
                 mouse_position
             ) or any(
                 slot.rect.collidepoint(mouse_position)
                 for slot in self._character_portrait_slots
             )
-        #elif self.app_state == "upgrade_screen":
-        #    should_use_hand = self.character_back_button_rect.collidepoint(
-        #        mouse_position
-        #    ) or any(
-        #        r.collidepoint(mouse_position) for r in self.upgrade_option_rects.values()
-        #    )
+        elif self.app_state == "upgrade_screen":
+            should_use_hand = switch_hover or self.character_back_button_rect.collidepoint(
+                mouse_position
+            ) or any(
+                r.collidepoint(mouse_position) for r in self.upgrade_option_rects.values()
+            )
         elif self.app_state == "playing":
-            should_use_hand = any(
+            should_use_hand = switch_hover or any(
                 button_rect.collidepoint(mouse_position)
                 for button_rect in self.attack_button_rects
             )

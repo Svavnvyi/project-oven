@@ -18,6 +18,17 @@ WIN_COIN_IMAGE_PATH = "ui/Win_coin.png"
 WIN_COIN_HUD_HEIGHT = 20
 WIN_COIN_HUD_GAP = 6
 
+# Top-right: opponent scaling toggle (below win coins HUD)
+OPPONENT_SCALING_SWITCH_TOP_GAP = 8
+OPPONENT_SCALING_SWITCH_TRACK_W = 48
+OPPONENT_SCALING_SWITCH_TRACK_H = 22
+OPPONENT_SCALING_SWITCH_THUMB_MARGIN = 3
+OPPONENT_SCALING_SWITCH_TRACK_OFF = (55, 55, 62)
+OPPONENT_SCALING_SWITCH_TRACK_ON = (70, 120, 85)
+OPPONENT_SCALING_SWITCH_THUMB_OFF = (200, 200, 210)
+OPPONENT_SCALING_SWITCH_THUMB_ON = (220, 245, 225)
+OPPONENT_SCALING_SWITCH_LABEL_COLOR = (220, 220, 230)
+
 # Main menu (full-screen image; click targets match scripts/gen_main_menu_png.py layout)
 MAIN_MENU_IMAGE_PATH = "ui/main_menu.png"
 MAIN_MENU_NEW_GAME_BUTTON = (70, 258, 260, 90)
@@ -29,9 +40,6 @@ UPGRADE_BASE_COST = 2
 ALLY_UPGRADE_ATTACK_FLAT_PER = 2
 ALLY_UPGRADE_HP_PER = 15
 OPPONENT_BUFF_MULT = 1.1
-# When True, each player upgrade also randomly buffs opponent HP or attack by +10%.
-# Disabled until balance is ready (interval-only buff still applies when False).
-ENABLE_OPPONENT_PERCENT_STAT_BUFFS = False
 OPPONENT_INTERVAL_FASTER_MULT = 0.9
 
 # Upgrade screen: three option buttons under portraits (y, size, gap)
@@ -159,8 +167,10 @@ OPPONENT_ATTACK1_FLAT_BONUS = 12
 OPPONENT_ATTACK2_DICE_COUNT = 2
 OPPONENT_ATTACK2_DICE_SIDES = 6
 OPPONENT_ATTACK2_FLAT_BONUS = 22
-# Chance per match: replace one of Attack1 / Attack2 / max HP with Toaster ally stats
+# Chance per match: enter Toaster mix rules (may replace one attack or neither).
 OPPONENT_FRIDGE_TOASTER_STAT_REPLACE_CHANCE = 0.5
+# Given mix: keep both opponent Fridge attacks (no Toaster damage on either).
+OPPONENT_FRIDGE_TOASTER_REPLACE_NEITHER_CHANCE = 0.25
 
 # Legacy names (used by older code paths — prefer *_ATTACK1_* above)
 FRIDGE_DAMAGE_DICE_COUNT = FRIDGE_ATTACK1_DICE_COUNT
