@@ -416,26 +416,42 @@ class Game:
         return self._build_ally_fridge()
 
     def _build_opponent_fridge(self) -> Fighter:
-        max_hp = max(
-            1,
-            int(config.OPPONENT_FRIDGE_MAX_HP * self.opponent_hp_mult + 0.5),
+        attack1 = AttackDamageSpec(
+            config.OPPONENT_ATTACK1_DICE_COUNT,
+            config.OPPONENT_ATTACK1_DICE_SIDES,
+            config.OPPONENT_ATTACK1_FLAT_BONUS,
         )
+        attack2 = AttackDamageSpec(
+            config.OPPONENT_ATTACK2_DICE_COUNT,
+            config.OPPONENT_ATTACK2_DICE_SIDES,
+            config.OPPONENT_ATTACK2_FLAT_BONUS,
+        )
+        hp_base = config.OPPONENT_FRIDGE_MAX_HP
+        if random.random() < config.OPPONENT_FRIDGE_TOASTER_STAT_REPLACE_CHANCE:
+            which = random.choice(("attack1", "attack2", "hp"))
+            if which == "attack1":
+                attack1 = AttackDamageSpec(
+                    config.TOASTER_ATTACK1_DICE_COUNT,
+                    config.TOASTER_ATTACK1_DICE_SIDES,
+                    config.TOASTER_ATTACK1_FLAT_BONUS,
+                )
+            elif which == "attack2":
+                attack2 = AttackDamageSpec(
+                    config.TOASTER_ATTACK2_DICE_COUNT,
+                    config.TOASTER_ATTACK2_DICE_SIDES,
+                    config.TOASTER_ATTACK2_FLAT_BONUS,
+                )
+            else:
+                hp_base = config.TOASTER_ALLY_MAX_HP
+        max_hp = max(1, int(hp_base * self.opponent_hp_mult + 0.5))
         stats = FighterStats(
             name="Fridge",
             max_hp=max_hp,
             strength=config.OPPONENT_FRIDGE_STRENGTH,
             side=config.OPPONENT_SIDE,
             initiative=config.OPPONENT_INITIATIVE,
-            attack1=AttackDamageSpec(
-                config.OPPONENT_ATTACK1_DICE_COUNT,
-                config.OPPONENT_ATTACK1_DICE_SIDES,
-                config.OPPONENT_ATTACK1_FLAT_BONUS,
-            ),
-            attack2=AttackDamageSpec(
-                config.OPPONENT_ATTACK2_DICE_COUNT,
-                config.OPPONENT_ATTACK2_DICE_SIDES,
-                config.OPPONENT_ATTACK2_FLAT_BONUS,
-            ),
+            attack1=attack1,
+            attack2=attack2,
         )
         idle_frames = assets.load_animation_frames(
             side=stats.side,
